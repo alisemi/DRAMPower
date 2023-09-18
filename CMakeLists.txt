@@ -74,7 +74,7 @@ set(DRAMPOWER_TEST_DIR    "${CMAKE_CURRENT_SOURCE_DIR}/tests")
 ### Build options ###
 option(DRAMPOWER_BUILD_TESTS "Build DRAMPower unit tests" OFF)
 option(DRAMPOWER_VERBOSE_CMAKE_OUTPUT "Show detailed CMake output" OFF)
-option(DRAMPOWER_BUILD_CLI "Build DRAMPower Command Line Tool" OFF)
+option(DRAMPOWER_BUILD_CLI "Build DRAMPower Command Line Tool" ON)
 
 ### Compiler settings ###
 set(CMAKE_CXX_STANDARD 17)

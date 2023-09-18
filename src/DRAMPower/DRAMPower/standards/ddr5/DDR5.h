@@ -54,6 +54,9 @@ class DDR5 : public dram_base<CmdType> {
     void handlePowerDownPreExit(Rank& rank, timestamp_t timestamp);
     void endOfSimulation(timestamp_t timestamp);
 
+    void handleActAll(Rank& rank, timestamp_t timestamp);
+    void handlePIMAll(Rank& rank, timestamp_t timestamp);
+
     // Calculations
     energy_t calcEnergy(timestamp_t timestamp);
     interface_energy_info_t calcInterfaceEnergy(timestamp_t timestamp);

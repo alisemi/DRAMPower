@@ -35,6 +35,9 @@ enum class CmdType {
 	SREFEX,  // 17
 	DSMEN,
 	DSMEX,
+	ACTA,
+	TU,
+	BP_PIM,
 	DDR5_EXTRA_COMMAND,
 	CALC_WINDOW,
 	END_OF_SIMULATION,

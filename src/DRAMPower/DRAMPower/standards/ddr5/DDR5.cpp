@@ -40,6 +40,10 @@ namespace DRAMPower {
         this->registerRankHandler<CmdType::PDXA>(&DDR5::handlePowerDownActExit);
         this->registerRankHandler<CmdType::PDXP>(&DDR5::handlePowerDownPreExit);
 
+        this->registerRankHandler<CmdType::ACTA>(&DDR5::handleActAll);
+        this->registerRankHandler<CmdType::BP_PIM>(&DDR5::handlePIMAll);
+        this->registerBankHandler<CmdType::TU>(&DDR5::handleWrite);
+
         routeCommand<CmdType::END_OF_SIMULATION>(
             [this](const Command &cmd) { this->endOfSimulation(cmd.timestamp); });
     };
@@ -176,6 +180,18 @@ namespace DRAMPower {
         }
     }
 
+    void DDR5::handleActAll(Rank& rank, timestamp_t timestamp) {
+        for (auto &bank: rank.banks) {
+            handleAct(rank, bank, timestamp);
+        }
+    }
+
+    void DDR5::handlePIMAll(Rank& rank, timestamp_t timestamp) {
+        for (auto &bank: rank.banks) {
+            handleWrite(rank, bank, timestamp);
+        }
+    }
+    
     void DDR5::handleRefSameBank(Rank & rank, std::size_t bank_id, timestamp_t timestamp) {
         auto bank_id_inside_bg = bank_id % this->memSpec.banksPerGroup;
         for(auto bank_group = 0; bank_group < this->memSpec.numberOfBankGroups; bank_group++) {
