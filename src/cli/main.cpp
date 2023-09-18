@@ -11,7 +11,7 @@
 
 using namespace DRAMPower;
 
-std::vector<Command> parse_command_list(std::string_view csv_file) {
+std::vector<Command> parse_command_list(std::string_view csv_file, std::vector<int> &phase_indices) {
     if (!std::filesystem::exists(csv_file) || std::filesystem::is_directory(csv_file)) {
         spdlog::error("MemSpec file was not found!");
         exit(1);
@@ -79,6 +79,10 @@ std::vector<Command> parse_command_list(std::string_view csv_file) {
             commandList.push_back({timestamp, CmdType::BP_PIM, {bank_id, bank_group_id, rank_id}});
         }
 
+        else if (cmdType == "PHASE_CONFIG") {
+            phase_indices.push_back(commandList.size());
+        }
+
         else if (cmdType == "END") {
             commandList.push_back({timestamp, CmdType::END_OF_SIMULATION});
         };
@@ -87,13 +91,57 @@ std::vector<Command> parse_command_list(std::string_view csv_file) {
     return commandList;
 };
 
+void handleOutputForPhase(MemSpecDDR5 &ddr5, std::vector<Command> &commandList, int beginIndex, int endIndex,
+                          int appPhase) {
+    DDR5 ddr(ddr5);
+
+    for (int i = beginIndex; i < endIndex; i++) {
+        ddr.doCommand(commandList[i]);
+    }
+    auto energy = ddr.calcEnergy(commandList[endIndex - 1].timestamp);
+    auto stats = ddr.getStats();
+
+    std::cout << std::fixed;
+
+    printf("*********************************** APPLICATION PHASE = %d ***********************************\n",
+           appPhase);
+
+    // fmt::print("commandList[{}] begin = {},{}\n", beginIndex, commandList[beginIndex].timestamp,
+    //            commandList[beginIndex].type);
+    // fmt::print("commandList[{}] end = {},{}\n", endIndex - 1, commandList[endIndex - 1].timestamp,
+    //            commandList[endIndex - 1].type);
+
+    if (beginIndex == endIndex) {
+        fmt::print("## E_bg_act_shared: {}\n", 0);
+        fmt::print("TOTAL ENERGY: {}\n", 0);
+    } else {
+        // for (int b = 0; b < ddr.memSpec.numberOfBanks; b++) {
+        //     fmt::print("{} -> ACT: {} PRE: {} RD: {}: WR:{} RDA: {} WRA: {} REF: {} BG_ACT*: {} BG_PRE_ {}\n", b,
+        //                energy.bank_energy[b].E_act, energy.bank_energy[b].E_pre, energy.bank_energy[b].E_RD,
+        //                energy.bank_energy[b].E_WR, energy.bank_energy[b].E_RDA, energy.bank_energy[b].E_WRA,
+        //                energy.bank_energy[b].E_ref_AB, energy.bank_energy[b].E_bg_act,
+        //                energy.bank_energy[b].E_bg_pre);
+        // }
+        // fmt::print("\n");
+        // fmt::print("## E_bg_act: {}\n", energy.total_energy().E_bg_act);
+        // fmt::print("## E_bg_pre: {}\n", energy.total_energy().E_bg_pre);
+        fmt::print("## E_bg_act_shared: {}\n", energy.E_bg_act_shared);
+        // fmt::print("## E_PDNA: {}\n", energy.E_PDNA);
+        // fmt::print("## E_PDNP: {}\n", energy.E_PDNP);
+        // fmt::print("\n");
+
+        fmt::print("TOTAL ENERGY: {}\n", energy.total_energy().total() + energy.E_sref + energy.E_PDNA + energy.E_PDNP);
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 3) {
         spdlog::error("Usage: ./CLI command_list ddr4_spec");
         exit(1);
     }
 
-    auto commandList = parse_command_list(argv[1]);
+    std::vector<int> phase_indices;
+    auto commandList = parse_command_list(argv[1], phase_indices);
 
     std::ifstream f((std::string(argv[2])));
     if (!f.is_open()) {
@@ -103,51 +151,16 @@ int main(int argc, char *argv[]) {
 
     json data = json::parse(f);
     MemSpecDDR5 ddr5(data["memspec"]);
-    DDR5 ddr(ddr5);
 
-    size_t count = 0;
+    int appPhase = 0;
+    for (int i = 0; i < phase_indices.size() - 1; i++) {
+        int beginIndex = phase_indices[i];
+        int endIndex = phase_indices[i + 1];
 
-    // std::vector<Command> testPattern = {
-    // 		{  0, CmdType::ACT,  { 0, 0, 0}},
-    // 		{  0, CmdType::ACT,  { 1, 0, 0}},
-    // 		{  0, CmdType::ACT,  { 2, 0, 0}},
-    // 		{ 15, CmdType::PRE,  { 0, 0, 0}},
-    // 		{ 20, CmdType::REFB, { 0, 0, 0}},
-    // 		{ 25, CmdType::PRE,  { 1, 0, 0}},
-    // 		{ 30, CmdType::RDA,  { 2, 0, 0}},
-    // 		{ 50, CmdType::REFB, { 2, 0, 0}},
-    // 		{ 60, CmdType::ACT,  { 1, 0, 0}},
-    // 		{ 80, CmdType::PRE,  { 1, 0, 0}},
-    // 		{ 85, CmdType::REFB, { 1, 0, 0}},
-    // 		{ 85, CmdType::REFB, { 0, 0, 0}},
-    // 		{ 125, CmdType::END_OF_SIMULATION },
-    // };
-
-    for (auto &command : commandList) {
-        ddr.doCommand(command);
-        count += 1;
+        handleOutputForPhase(ddr5, commandList, beginIndex, endIndex, appPhase);
+        appPhase++;
     }
-
-    auto energy = ddr.calcEnergy(commandList.back().timestamp);
-    auto stats = ddr.getStats();
-
-    std::cout << std::fixed;
-
-    for (int b = 0; b < ddr.memSpec.numberOfBanks; b++) {
-        fmt::print("{} -> ACT: {} PRE: {} RD: {}: WR:{} RDA: {} WRA: {} REF: {} BG_ACT*: {} BG_PRE_ {}\n", b,
-                   energy.bank_energy[b].E_act, energy.bank_energy[b].E_pre, energy.bank_energy[b].E_RD,
-                   energy.bank_energy[b].E_WR, energy.bank_energy[b].E_RDA, energy.bank_energy[b].E_WRA,
-                   energy.bank_energy[b].E_ref_AB, energy.bank_energy[b].E_bg_act, energy.bank_energy[b].E_bg_pre);
-    }
-    fmt::print("\n");
-    fmt::print("## E_bg_act: {}\n", energy.total_energy().E_bg_act);
-    fmt::print("## E_bg_pre: {}\n", energy.total_energy().E_bg_pre);
-    fmt::print("## E_bg_act_shared: {}\n", energy.E_bg_act_shared);
-    fmt::print("## E_PDNA: {}\n", energy.E_PDNA);
-    fmt::print("## E_PDNP: {}\n", energy.E_PDNP);
-    fmt::print("\n");
-
-    fmt::print("TOTAL ENERGY: {}\n", energy.total_energy().total() + energy.E_sref + energy.E_PDNA + energy.E_PDNP);
+    handleOutputForPhase(ddr5, commandList, phase_indices[phase_indices.size() - 1], commandList.size(), appPhase);
 
     return 0;
 };
